@@ -60,6 +60,7 @@ Defines how imgproxy will resize the source image. Supported resizing types are:
 
 * `fit`: resizes the image while keeping aspect ratio to fit given size;
 * `fill`: resizes the image while keeping aspect ratio to fill given size and cropping projecting parts;
+* `stretch`: resizes the image while ignoring aspect ratio to fill given size;
 * `crop`: crops the image to a given size.
 
 Default: `fit`

@@ -189,6 +189,10 @@ func extractMeta(img *C.VipsImage) (int, int, int, bool) {
 }
 
 func calcScale(width, height int, po *processingOptions, imgtype imageType) float64 {
+	if po.Resize == resizeStretch {
+		return 1
+	}
+
 	// If we're going only to crop, we need only to scale down to DPR.
 	// Scaling up while cropping is not optimal on this stage, we'll do it later if needed.
 	if po.Resize == resizeCrop {
@@ -234,6 +238,26 @@ func calcScale(width, height int, po *processingOptions, imgtype imageType) floa
 	}
 
 	return scale
+}
+
+func calcScales(width, height int, po *processingOptions, imgtype imageType) (float64, float64) {
+	var hscale, vscale float64
+
+	srcW, srcH := float64(width), float64(height)
+
+	if (po.Width == 0 || po.Width == width) {
+		hscale = 1
+	} else {
+		hscale = float64(po.Width) / srcW
+	}
+
+	if (po.Height == 0 || po.Height == height) {
+		vscale = 1
+	} else {
+		vscale = float64(po.Height) / srcH
+	}
+
+	return hscale, vscale
 }
 
 func canScaleOnLoad(imgtype imageType, scale float64) bool {
@@ -345,8 +369,16 @@ func transformImage(ctx context.Context, img **C.VipsImage, data []byte, po *pro
 		}
 	}
 
+	if po.Resize == resizeStretch {
+		hscale, vscale := calcScales(imgWidth, imgHeight, po, imgtype)
+
+		if err = vipsResize(img, hscale, vscale, hasAlpha); err != nil {
+			return err
+		}
+	}
+
 	if scale != 1 {
-		if err = vipsResize(img, scale, hasAlpha); err != nil {
+		if err = vipsResize(img, scale, scale, hasAlpha); err != nil {
 			return err
 		}
 	}
@@ -420,7 +452,7 @@ func transformImage(ctx context.Context, img **C.VipsImage, data []byte, po *pro
 
 	if po.Enlarge && po.Resize == resizeCrop && po.Dpr > 1 {
 		// We didn't enlarge the image before, because is wasn't optimal. Now it's time to do it
-		if err = vipsResize(img, po.Dpr, hasAlpha); err != nil {
+		if err = vipsResize(img, po.Dpr, po.Dpr, hasAlpha); err != nil {
 			return err
 		}
 		if err = vipsImageCopyMemory(img); err != nil {
@@ -802,15 +834,15 @@ func vipsRad2Float(img **C.VipsImage) error {
 	return nil
 }
 
-func vipsResize(img **C.VipsImage, scale float64, hasAlpa bool) error {
+func vipsResize(img **C.VipsImage, hscale float64, vscale float64, hasAlpa bool) error {
 	var tmp *C.VipsImage
 
 	if hasAlpa {
-		if C.vips_resize_with_premultiply(*img, &tmp, C.double(scale)) != 0 {
+		if C.vips_resize_with_premultiply(*img, &tmp, C.double(hscale), C.double(vscale)) != 0 {
 			return vipsError()
 		}
 	} else {
-		if C.vips_resize_go(*img, &tmp, C.double(scale)) != 0 {
+		if C.vips_resize_go(*img, &tmp, C.double(hscale), C.double(vscale)) != 0 {
 			return vipsError()
 		}
 	}
@@ -1066,7 +1098,7 @@ func vipsResizeWatermark(width, height int) (wm *C.VipsImage, err error) {
 		scale = 1 / wmH
 	}
 
-	if C.vips_resize_with_premultiply(watermark, &wm, C.double(scale)) != 0 {
+	if C.vips_resize_with_premultiply(watermark, &wm, C.double(scale), C.double(scale)) != 0 {
 		err = vipsError()
 	}
 
